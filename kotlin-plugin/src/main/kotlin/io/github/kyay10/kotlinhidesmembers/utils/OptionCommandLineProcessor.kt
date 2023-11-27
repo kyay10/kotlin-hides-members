@@ -17,72 +17,65 @@
 
 package io.github.kyay10.kotlinhidesmembers.utils
 
+import kotlin.reflect.KProperty
 import org.jetbrains.kotlin.compiler.plugin.AbstractCliOption
+import org.jetbrains.kotlin.compiler.plugin.CliOptionProcessingException
 import org.jetbrains.kotlin.compiler.plugin.CommandLineProcessor
+import org.jetbrains.kotlin.compiler.plugin.ExperimentalCompilerApi
 import org.jetbrains.kotlin.config.CompilerConfiguration
 import org.jetbrains.kotlin.config.CompilerConfigurationKey
-import kotlin.reflect.KProperty
 
+@OptIn(ExperimentalCompilerApi::class)
 open class OptionCommandLineProcessor(override val pluginId: String) : CommandLineProcessor {
-    @PublishedApi
-    internal val _pluginOptions: MutableCollection<TransformableCliOption<*>> = mutableListOf()
-    override val pluginOptions: Collection<TransformableCliOption<*>> = _pluginOptions
+  override val pluginOptions: MutableCollection<TransformableCliOption<*>> = mutableListOf()
 
-    inline fun <T : Any> option(
-        optionName: String,
-        valueDescription: String,
-        description: String,
-        required: Boolean = true,
-        allowMultipleOccurrences: Boolean = false,
-        crossinline transform: (String) -> T
-    ): TransformableCliOption<T> {
-        return object :
-            TransformableCliOption<T>(optionName, valueDescription, description, required, allowMultipleOccurrences) {
-            override fun transform(value: String): T = transform(value)
-        }.also { _pluginOptions.add(it) }
-    }
+  operator fun <T : Any> TransformableCliOption<T>.provideDelegate(
+    thisRef: Any?,
+    property: KProperty<*>
+  ): TransformableCliOption<T> = this.also { pluginOptions.add(it) }
 
-    // The `: String` thing is specifically so that you can distinguish clearly that it's an option of String
-    @Suppress("FINAL_UPPER_BOUND")
-    fun <T : String> option(
-        optionName: String,
-        valueDescription: String,
-        description: String,
-        required: Boolean = true,
-        allowMultipleOccurrences: Boolean = false,
-    ): TransformableCliOption<T> {
-        return object :
-            TransformableCliOption<T>(optionName, valueDescription, description, required, allowMultipleOccurrences) {
-            @Suppress("UNCHECKED_CAST")
-            override fun transform(value: String): T = value as T
-        }.also { _pluginOptions.add(it) }
-    }
+  operator fun <T : Any> TransformableCliOption<T>.getValue(
+    thisRef: Any?,
+    property: KProperty<*>
+  ): CompilerConfigurationKey<T> = configurationKey
 
-    override fun processOption(
-        option: AbstractCliOption,
-        value: String,
-        configuration: CompilerConfiguration
-    ) {
-        @Suppress("UNCHECKED_CAST")
-        (option as? TransformableCliOption<Any>)?.let {
-            configuration.put(
-                it.configurationKey,
-                it.transform(value)
-            )
-        } ?: throw IllegalArgumentException("Unexpected config option ${option.optionName}")
-    }
+  override fun processOption(
+    option: AbstractCliOption,
+    value: String,
+    configuration: CompilerConfiguration
+  ) {
+    (option as? TransformableCliOption<Any>)?.let {
+      configuration.put(it.configurationKey,  it.transform(value))
+    } ?: throw CliOptionProcessingException("Unknown plugin option $option")
+  }
 }
 
-abstract class TransformableCliOption<T : Any>(
-    name: String,
+data class TransformableCliOption<out T : Any>(
+    override val optionName: String,
     override val valueDescription: String,
     override val description: String,
     override val required: Boolean = true,
-    override val allowMultipleOccurrences: Boolean = false
+    override val allowMultipleOccurrences: Boolean = false,
+    val transform: (String) -> T,
 ) : AbstractCliOption {
-    override val optionName: String = name
-    abstract fun transform(value: String): T
-    val configurationKey: CompilerConfigurationKey<T> = CompilerConfigurationKey<T>(name)
-
-    operator fun getValue(thisRef: Any?, property: KProperty<*>): CompilerConfigurationKey<T> = configurationKey
+  val configurationKey: CompilerConfigurationKey<@UnsafeVariance T> = CompilerConfigurationKey<T>(optionName)
 }
+
+fun option(
+    optionName: String,
+    valueDescription: String,
+    description: String,
+    required: Boolean = true,
+    allowMultipleOccurrences: Boolean = false,
+): TransformableCliOption<String> =
+    option(optionName, valueDescription, description, required, allowMultipleOccurrences) { it }
+fun <T : Any> option(
+  optionName: String,
+  valueDescription: String,
+  description: String,
+  required: Boolean = true,
+  allowMultipleOccurrences: Boolean = false,
+  transform: (String) -> T,
+): TransformableCliOption<T> =
+    TransformableCliOption(
+        optionName, valueDescription, description, required, allowMultipleOccurrences, transform)

@@ -14,15 +14,14 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
-@file:Suppress("unused")
+@file:OptIn(ExperimentalCompilerApi::class)
 
 package io.github.kyay10.kotlinhidesmembers
 
+import com.tschuchort.compiletesting.JvmCompilationResult
 import com.tschuchort.compiletesting.KotlinCompilation
 import com.tschuchort.compiletesting.SourceFile
-import org.jetbrains.kotlin.compiler.plugin.CommandLineProcessor
-import org.jetbrains.kotlin.compiler.plugin.ComponentRegistrar
+import org.jetbrains.kotlin.compiler.plugin.ExperimentalCompilerApi
 import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.TestInstance
@@ -33,92 +32,73 @@ import kotlin.test.assertEquals
 
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class HidesMembersPluginTest {
-    private val outStream = ByteArrayOutputStream()
-    private val sampleFiles = mutableListOf<SourceFile>()
-    private lateinit var compiledSamples: KotlinCompilation.Result
+  private val outStream = ByteArrayOutputStream()
+  private val sampleFiles = mutableListOf<SourceFile>()
+  private lateinit var compiledSamples: JvmCompilationResult
 
-    @BeforeAll
-    fun setupSampleFiles() {
-        val sampleJvmMainDirectory = File(BuildConfig.SAMPLE_JVM_MAIN_PATH)
-        sampleFiles.addAll(sampleJvmMainDirectory.listFilesRecursively { it.extension == "kt" || it.extension == "java" }
+  @BeforeAll
+  fun setupSampleFiles() {
+    val sampleJvmMainDirectory = File(BuildConfig.SAMPLE_JVM_MAIN_PATH)
+    sampleFiles.addAll(
+        sampleJvmMainDirectory
+            .listFilesRecursively { it.extension == "kt" || it.extension == "java" }
             .map { SourceFile.fromPath(it) })
-        println(
-            "Kotlin Sample Compilation took ${
+    println(
+        "Kotlin Sample Compilation took ${
                 measureTimeMillis {
                     compiledSamples = compileSources(sampleFiles, outStream)
                 }
-            } milliseconds"
-        )
-    }
+            } milliseconds")
+    outStream.writeTo(System.out)
+  }
 
-    @Test
-    fun `Original Example`() {
-        outStream.writeTo(System.out)
-        val myOut = ByteArrayOutputStream()
-        val printStream = PrintStream(myOut, false)
-        System.setOut(printStream)
-        runMain(compiledSamples, "MyClassKt")
-        printStream.flush()
-        val printed = myOut.toString()
-        assertEquals(KotlinCompilation.ExitCode.OK, compiledSamples.exitCode)
-        assertEquals(
-            """
+  @Test
+  fun `Original Example`() {
+    val printed = compiledSamples.runMain("MyClassKt")
+    assertEquals(KotlinCompilation.ExitCode.OK, compiledSamples.exitCode)
+    assertEquals("""
         -5
         42
-        """.trimIndent().trim(), printed.trim()
-        )
-    }
+        """.trimIndent().trim(), printed.trim())
+  }
 }
 
-fun compile(
-    sourceFiles: List<SourceFile>,
-    outputStream: OutputStream,
-    plugin: ComponentRegistrar = HidesMembersComponentRegistrar(),
-    commandLineProcessor: CommandLineProcessor = HidesMembersCommandLineProcessor(),
-    className: String = "MainKt",
-): KotlinCompilation.Result {
-    val result = compileSources(sourceFiles, outputStream, plugin, commandLineProcessor)
-    runMain(result, className)
-    return result
+private fun JvmCompilationResult.runMain(className: String = "MainKt"): String {
+  val realOut = System.out
+  val myOut = ByteArrayOutputStream()
+  val printStream = PrintStream(myOut, false)
+  System.setOut(printStream)
+  val kClazz = classLoader.loadClass(className)
+  val main = kClazz.declaredMethods.single { it.name == "main" && it.parameterCount == 0 }
+  try {
+    main.invoke(null)
+    printStream.flush()
+    return myOut.toString()
+  } catch (e: InvocationTargetException) {
+    throw e.targetException!!
+  } finally {
+    System.setOut(realOut)
+  }
 }
 
-private fun runMain(
-    result: KotlinCompilation.Result,
-    className: String = "MainKt"
-) {
-    val kClazz = result.classLoader.loadClass(className)
-    val main = kClazz.declaredMethods.single { it.name == "main" && it.parameterCount == 0 }
-    try {
-        main.invoke(null)
-    } catch (e: InvocationTargetException) {
-        throw e.targetException!!
-    }
-}
-
+@OptIn(ExperimentalCompilerApi::class)
 private fun compileSources(
     sourceFiles: List<SourceFile>,
     outputStream: OutputStream,
-    plugin: ComponentRegistrar = HidesMembersComponentRegistrar(),
-    commandLineProcessor: CommandLineProcessor = HidesMembersCommandLineProcessor()
-) = KotlinCompilation().apply {
-    sources = sourceFiles
-    useIR = true
-    compilerPlugins = listOf(plugin)
-    commandLineProcessors = listOf(commandLineProcessor)
-    inheritClassPath = true
-    messageOutputStream = outputStream
-    verbose = true
-    kotlincArguments = kotlincArguments + "-Xallow-kotlin-package" + "-Xcontext-receivers"
-}.compile()
-
-fun compile(
-    sourceFile: SourceFile,
-    outputStream: OutputStream,
-    plugin: ComponentRegistrar = HidesMembersComponentRegistrar(),
-    commandLineProcessor: CommandLineProcessor = HidesMembersCommandLineProcessor()
-): KotlinCompilation.Result {
-    return compile(listOf(sourceFile), outputStream, plugin, commandLineProcessor)
-}
+) =
+    KotlinCompilation()
+        .apply {
+          sources = sourceFiles
+          compilerPluginRegistrars = listOf(HidesMembersPluginRegistrar())
+          commandLineProcessors = listOf(HidesMembersCommandLineProcessor())
+          inheritClassPath = true
+          messageOutputStream = outputStream
+          verbose = true
+          languageVersion = "1.9"
+          kotlincArguments += "-Xallow-kotlin-package"
+          kotlincArguments += "-Xcontext-receivers"
+        }
+        .compile()
 
 fun File.listFilesRecursively(filter: FileFilter): List<File> =
     listOf(this).listFilesRecursively(filter, mutableListOf())
@@ -127,12 +107,15 @@ tailrec fun List<File>.listFilesRecursively(
     filter: FileFilter,
     files: MutableList<File> = mutableListOf()
 ): List<File> {
-    val dirs = mutableListOf<File>()
-    for (file in this) {
-        val filteredFiles = file.listFiles(filter) ?: continue
-        files.addAll(filteredFiles)
-        dirs.addAll(file.listFiles { it: File -> it.isDirectory } ?: continue)
-    }
-    return dirs.ifEmpty { return files }.listFilesRecursively(filter, files)
+  val dirs = mutableListOf<File>()
+  for (file in this) {
+    val filteredFiles = file.listFiles(filter) ?: continue
+    files.addAll(filteredFiles)
+    dirs.addAll(file.listFiles { it: File -> it.isDirectory } ?: continue)
+  }
+  return dirs
+      .ifEmpty {
+        return files
+      }
+      .listFilesRecursively(filter, files)
 }
-

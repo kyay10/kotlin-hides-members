@@ -22,11 +22,12 @@ import org.jetbrains.kotlin.maven.KotlinMavenPluginExtension
 import org.jetbrains.kotlin.maven.PluginOption
 
 class HidesMembersMavenPlugin : KotlinMavenPluginExtension {
-    override fun getCompilerPluginId() = BuildConfig.KOTLIN_PLUGIN_ID
+  override fun getCompilerPluginId() = BuildConfig.KOTLIN_PLUGIN_ID
 
-    override fun isApplicable(project: MavenProject, execution: MojoExecution) = true
+  override fun isApplicable(project: MavenProject, execution: MojoExecution) = true
 
-    override fun getPluginOptions(project: MavenProject, execution: MojoExecution): List<PluginOption> {
-        return emptyList()
-    }
+  override fun getPluginOptions(
+      project: MavenProject,
+      execution: MojoExecution
+  ): List<PluginOption> = emptyList()
 }

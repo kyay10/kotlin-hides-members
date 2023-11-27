@@ -19,8 +19,6 @@
 
 package io.github.kyay10.kotlinhidesmembers
 
-import io.github.kyay10.kotlinhidesmembers.BuildConfig
-import org.gradle.api.Project
 import org.gradle.api.provider.Provider
 import org.jetbrains.kotlin.gradle.plugin.KotlinCompilation
 import org.jetbrains.kotlin.gradle.plugin.KotlinCompilerPluginSupportPlugin
@@ -28,40 +26,22 @@ import org.jetbrains.kotlin.gradle.plugin.SubpluginArtifact
 import org.jetbrains.kotlin.gradle.plugin.SubpluginOption
 
 class HidesMembersGradlePlugin : KotlinCompilerPluginSupportPlugin {
-    override fun apply(target: Project) {}
+  override fun isApplicable(kotlinCompilation: KotlinCompilation<*>): Boolean = true
 
-    override fun isApplicable(kotlinCompilation: KotlinCompilation<*>): Boolean = true
+  override fun getCompilerPluginId(): String = BuildConfig.KOTLIN_PLUGIN_ID
 
-    override fun getCompilerPluginId(): String = BuildConfig.KOTLIN_PLUGIN_ID
+  override fun getPluginArtifact(): SubpluginArtifact =
+      SubpluginArtifact(
+          groupId = BuildConfig.KOTLIN_PLUGIN_GROUP,
+          artifactId = BuildConfig.KOTLIN_PLUGIN_NAME,
+          version = BuildConfig.KOTLIN_PLUGIN_VERSION)
 
-    override fun getPluginArtifact(): SubpluginArtifact =
-        SubpluginArtifact(
-            groupId = BuildConfig.KOTLIN_PLUGIN_GROUP,
-            artifactId = BuildConfig.KOTLIN_PLUGIN_NAME,
-            version = BuildConfig.KOTLIN_PLUGIN_VERSION
-        )
-
-    override fun getPluginArtifactForNative(): SubpluginArtifact =
-        SubpluginArtifact(
-            groupId = BuildConfig.KOTLIN_PLUGIN_GROUP,
-            artifactId = BuildConfig.KOTLIN_PLUGIN_NAME + "-native",
-            version = BuildConfig.KOTLIN_PLUGIN_VERSION
-        )
-
-    @Suppress("UNUSED_VARIABLE")
-    override fun applyToCompilation(
-        kotlinCompilation: KotlinCompilation<*>
-    ): Provider<List<SubpluginOption>> {
-        val project = kotlinCompilation.target.project
-
-        val sourceSetName = kotlinCompilation.compilationName
-
-        kotlinCompilation.dependencies {
-            implementation(
-                "${BuildConfig.PRELUDE_LIBRARY_GROUP}:${BuildConfig.PRELUDE_LIBRARY_NAME}:${BuildConfig.PRELUDE_LIBRARY_VERSION}"
-            )
-        }
-
-        return project.provider { listOf() }
+  override fun applyToCompilation(
+      kotlinCompilation: KotlinCompilation<*>
+  ): Provider<List<SubpluginOption>> {
+    kotlinCompilation.dependencies {
+      implementation(BuildConfig.PRELUDE_LIBRARY)
     }
+    return kotlinCompilation.target.project.provider { listOf() }
+  }
 }

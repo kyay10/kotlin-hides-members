@@ -1,2 +1,5 @@
-/secret_key_ring_file.gpg
-/local.properties
+.gradle
+*/.gradle
+.idea
+build
+*/build

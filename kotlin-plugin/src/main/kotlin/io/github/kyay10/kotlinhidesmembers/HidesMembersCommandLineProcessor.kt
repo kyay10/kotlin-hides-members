@@ -20,8 +20,10 @@ package io.github.kyay10.kotlinhidesmembers
 import com.google.auto.service.AutoService
 import io.github.kyay10.kotlinhidesmembers.utils.OptionCommandLineProcessor
 import org.jetbrains.kotlin.compiler.plugin.CommandLineProcessor
+import org.jetbrains.kotlin.compiler.plugin.ExperimentalCompilerApi
 
+@OptIn(ExperimentalCompilerApi::class)
 @AutoService(CommandLineProcessor::class)
 class HidesMembersCommandLineProcessor : CommandLineProcessor by Companion {
-    companion object : OptionCommandLineProcessor(BuildConfig.KOTLIN_PLUGIN_ID)
+  companion object : OptionCommandLineProcessor(BuildConfig.KOTLIN_PLUGIN_ID)
 }
