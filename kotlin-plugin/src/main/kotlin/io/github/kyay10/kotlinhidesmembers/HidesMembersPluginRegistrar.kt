@@ -53,7 +53,36 @@ class UniversalSet<E>(private val originalSet: Set<E>) : Set<E> by originalSet {
 }
 
 fun Field.forceAccessible() = apply {
-  isAccessible = true
-  val modifiersField = Field::class.java.getDeclaredField("modifiers").apply { isAccessible = true }
-  modifiersField.setInt(this, modifiers and Modifier.FINAL.inv())
+    isAccessible = true
+    fun newGetModifiersField(): Field? {
+        val getDeclaredFields0: Method =
+            Class::class.java.getDeclaredMethod("getDeclaredFields0", Boolean::class.javaPrimitiveType)
+        try {
+            getDeclaredFields0.isAccessible = true
+        } catch (e: Exception) {
+            throw Exception("Need:(--add-opens java.base/java.lang=ALL-UNNAMED) and (--add-opens java.base/java.lang.reflect=ALL-UNNAMED) ActualErrorMessages:${e.message}")
+        }
+        val fields = getDeclaredFields0.invoke(Field::class.java, false) as Array<Field>
+        var modifiersField: Field? = null
+        for (each in fields) {
+            if ("modifiers" == each.name) {
+                modifiersField = each
+            }
+        }
+        return modifiersField
+    }
+    val modifiersField = when (val jdkVersion = System.getProperty("java.specification.version")) {
+        "1.8", "1.9" -> {
+            newGetModifiersField()
+        }
+
+        else ->
+            if (jdkVersion.toInt() >= 10) 
+                newGetModifiersField()
+            else 
+                Field::class.java.getDeclaredField("modifiers")
+    }
+    if (modifiersField == null) throw NotImplementedError("FieldsThatCouldNotBeProcessed")
+    modifiersField.apply { isAccessible = true }.setInt(this, modifiers and Modifier.FINAL.inv())
 }
+
